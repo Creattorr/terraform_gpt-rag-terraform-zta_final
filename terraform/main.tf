@@ -1080,7 +1080,7 @@ resource "azurerm_container_app" "frontend" {
 
       env {
         name  = "ORCHESTRATOR_BASE_URL"
-        value = "https://${azurerm_container_app.orchestrator.latest_revision_fqdn}"
+        value = "https://${azurerm_container_app.orchestrator.ingress[0].fqdn}"
       }
 
       env {
@@ -1635,7 +1635,7 @@ locals {
   container_apps_list = [
     {
       name           = azurerm_container_app.orchestrator.name
-      fqdn           = azurerm_container_app.orchestrator.latest_revision_fqdn
+      fqdn           = azurerm_container_app.orchestrator.ingress[0].fqdn
       external       = true
       service_name   = "orchestrator"
       profile_name   = "main"
@@ -1655,7 +1655,7 @@ locals {
     },
     {
       name           = azurerm_container_app.frontend.name
-      fqdn           = azurerm_container_app.frontend.latest_revision_fqdn
+      fqdn           = azurerm_container_app.frontend.ingress[0].fqdn
       external       = true
       service_name   = "frontend"
       profile_name   = "main"
@@ -1671,7 +1671,7 @@ locals {
     },
     {
       name           = azurerm_container_app.dataingest.name
-      fqdn           = azurerm_container_app.dataingest.latest_revision_fqdn
+      fqdn           = azurerm_container_app.dataingest.ingress[0].fqdn
       external       = true
       service_name   = "dataingest"
       profile_name   = "main"
@@ -1690,7 +1690,7 @@ locals {
     },
     {
       name           = azurerm_container_app.mcp.name
-      fqdn           = azurerm_container_app.mcp.latest_revision_fqdn
+      fqdn           = azurerm_container_app.mcp.ingress[0].fqdn
       external       = true
       service_name   = "mcp"
       profile_name   = "main"

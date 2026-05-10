@@ -145,6 +145,72 @@ Only consider import if you intentionally want Terraform to own a resource Azure
 
 For this replica, import is not recommended because the connection is a Foundry-surfaced shared connection and was removed from the desired Terraform model.
 
+## Error: Provider Produced Inconsistent Final Plan During Image Apply
+
+### Symptom
+
+`terraform apply "tfplan-images"` updates `orchestrator`, `dataingest`, and `mcp`, then fails while expanding the `frontend` plan:
+
+```text
+Error: Provider produced inconsistent final plan
+
+When expanding the plan for azurerm_container_app.frontend ...
+.template[0].container[0].env[3].value:
+was
+"https://ca-<prefix>-orchestrator--<old-revision>.<domain>.azurecontainerapps.io"
+but now
+"https://ca-<prefix>-orchestrator--0000001.<domain>.azurecontainerapps.io"
+```
+
+### Likely Cause
+
+The frontend `ORCHESTRATOR_BASE_URL` used the orchestrator `latest_revision_fqdn`.
+
+When the orchestrator image changes, Azure Container Apps creates or normalizes a new revision FQDN during the same apply. The AzureRM provider then sees a different value for the frontend env var than the value captured in the saved plan.
+
+This is a provider planning bug triggered by revision-specific FQDNs.
+
+### Fix Applied
+
+The replica now uses stable Container App ingress FQDNs instead of revision-specific FQDNs:
+
+```hcl
+ORCHESTRATOR_BASE_URL = "https://${azurerm_container_app.orchestrator.ingress[0].fqdn}"
+```
+
+The `frontend_url` output and App Configuration endpoint list also use `ingress[0].fqdn`.
+
+### Retry Steps
+
+Do not rerun the old `tfplan-images` file after this code change.
+
+Create a new plan:
+
+```powershell
+terraform validate
+terraform plan -var-file="terraform.tfvars" -out="tfplan-images-retry"
+terraform apply "tfplan-images-retry"
+```
+
+If only the frontend remains out of date, you can make a focused retry plan:
+
+```powershell
+terraform plan `
+  -var-file="terraform.tfvars" `
+  -target=azurerm_container_app.frontend `
+  -out="tfplan-frontend-images-retry"
+
+terraform apply "tfplan-frontend-images-retry"
+```
+
+After apply, verify all Container Apps:
+
+```powershell
+az containerapp list -g $rg `
+  --query "[].{name:name,running:properties.runningStatus,image:properties.template.containers[0].image,fqdn:properties.configuration.ingress.fqdn}" `
+  -o table
+```
+
 ## Error: Foundry Capability Host Creation Times Out or Conflicts
 
 ### Symptom

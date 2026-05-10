@@ -23,7 +23,7 @@ output "app_config_endpoint" {
 }
 
 output "frontend_url" {
-  value = try("https://${azurerm_container_app.frontend.latest_revision_fqdn}", null)
+  value = try("https://${azurerm_container_app.frontend.ingress[0].fqdn}", null)
 }
 
 output "ai_foundry_account_name" {
