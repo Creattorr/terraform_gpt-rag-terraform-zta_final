@@ -1,0 +1,8 @@
+resource_group_name  = "<tfstate-resource-group-name>"
+storage_account_name = "<tfstate-storage-account-name>"
+container_name       = "tfstate"
+key                  = "<environment-name>.tfstate"
+subscription_id      = "<subscription-id>"
+tenant_id            = "<tenant-id>"
+use_azuread_auth     = true
+

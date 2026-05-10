@@ -1,0 +1,15 @@
+GPT-RAG Terraform smoke test document
+
+This smoke test validates the Terraform deployment path for GPT-RAG on Azure. The deployment created the resource group, container apps, managed identities, storage accounts, Azure AI Search service, Azure AI Foundry resources, Azure OpenAI deployments, Azure Container Registry, and App Configuration settings required by the accelerator. The goal of this document is to provide enough text for the ingestion worker to split the file into chunks, create embeddings, and upload searchable records into the RAG index.
+
+The unique validation phrase for this run is terraform-rag-smoke-20260426. This phrase should appear in Azure AI Search after ingestion completes. It is repeated in this document so both keyword search and vector-backed retrieval have enough context to find it reliably: terraform-rag-smoke-20260426.
+
+The ingestion service reads files from the documents storage container. When a file is discovered, the service checks the configured index state, opens the source blob, extracts text, applies chunking rules, enriches the resulting chunks with metadata, and writes the final records to the configured Azure AI Search index. In this environment, the expected RAG index is ragindex-gptragpghd9z and the document container is named documents.
+
+This content intentionally describes the deployment in operational terms. A successful result means the container app identity can read the storage blob, the ingestion runtime can obtain configuration from Azure App Configuration, the embedding client can call the configured Azure OpenAI deployment, and the search client can write documents into the index. Those permissions are the main cross-service connections needed before end users can upload real documents and query them through the GPT-RAG front end.
+
+For validation, the document should produce at least one chunk. A very small file can be read successfully and still be skipped by the chunker because it does not meet the minimum chunk size. This longer document avoids that case. The phrase terraform-rag-smoke-20260426 is part of the meaningful text and should be returned by a search query against Azure AI Search once the ingestion job finishes.
+
+After this test passes, the next practical checks are to upload a representative PDF or Office document, confirm that richer file extraction succeeds, and then ask a question in the front end that can only be answered from the uploaded content. That final check proves the path from blob storage through ingestion, embeddings, search indexing, orchestration, and the UI is working end to end.
+
+End of smoke test document for terraform-rag-smoke-20260426.

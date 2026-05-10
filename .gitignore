@@ -1,0 +1,12 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan*
+terraform.tfvars
+*.console.txt
+*.log
+*.pem
+*.zip
+*.bak
+*.tmp

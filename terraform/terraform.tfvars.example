@@ -1,0 +1,61 @@
+subscription_id     = "<subscription-id>"
+tenant_id           = "<tenant-id>"
+location            = "swedencentral"
+search_location     = null
+environment_name    = "gptragtest"
+resource_group_name = "rg-gptragtest-zta-01"
+
+chat_model_name          = "gpt-4o"
+chat_model_version       = "2024-11-20"
+chat_model_capacity      = 8
+embedding_model_name     = "text-embedding-3-large"
+embedding_model_version  = "1"
+embedding_model_capacity = 8
+
+# Use standard for a clean validation unless your subscription has a specific reason to use basic.
+search_sku = "standard"
+
+# Stage 1 uses public placeholder images so Terraform can create ACR first.
+# Replace these with the new ACR images in Stage 3.
+frontend_image     = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+orchestrator_image = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+dataingest_image   = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+mcp_image          = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+
+use_capp_api_key       = false
+container_app_api_keys = {}
+
+# Leave null to let Terraform generate the frontend/orchestrator token.
+container_app_api_token = null
+
+enable_responsible_ai_policy = true
+rai_blocklist_name           = "gptragReplicaBlocklist"
+rai_policy_name              = "gptragReplicaRAIPolicy"
+rai_blocklist_items          = []
+
+tags = {
+  env     = "replica-test"
+  purpose = "gpt-rag-generalization"
+}
+
+# Zero-trust/private networking.
+enable_zero_trust                         = true
+disable_public_network_access             = false
+manage_app_config_keys                    = false
+container_apps_internal_only              = false
+enable_container_apps_private_environment = true
+ai_foundry_rebuild_suffix                 = ""
+enable_ai_foundry_network_injection       = true
+
+# Stage 1 keeps this false so foundation resources settle first.
+# Stage 4 turns it true to test whether Terraform can manage capability hosts in a clean environment.
+enable_ai_foundry_capability_hosts        = false
+
+enable_bastion             = true
+enable_jumpbox             = true
+deploy_jumpbox_software    = false
+enable_jumpbox_nat_gateway = true
+
+# Optional. Keep the username unless you customize GPT-RAG jumpbox install behavior.
+# jumpbox_admin_username = "testvmuser"
+# jumpbox_admin_password = "Use-A-Strong-Approved-Password-Here"
