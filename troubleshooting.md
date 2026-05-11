@@ -516,6 +516,62 @@ resource "azurerm_virtual_machine_run_command" "jumpbox_required_tools" {
 
 This makes a fresh environment independent of existing GitHub links and independent of storage data-plane access during tool bootstrap.
 
+## Error: Jumpbox Tool Bootstrap Succeeds Partially or Wrong Python Wins
+
+### Symptom
+
+The required-tools bootstrap runs, but later verification shows one of these problems:
+
+```powershell
+python --version
+azd version
+pwsh.exe -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+```
+
+returns an unexpected version, resolves Python from `C:\Miniconda`, or says `azd` is not recognized.
+
+### Likely Cause
+
+The Windows Data Science VM image already contains several developer tools and PATH entries. In this image, Miniconda can appear before the newly installed Python, and Azure Developer CLI's MSI can install under the LocalSystem profile when executed by VM Run Command.
+
+### Fix Applied
+
+The bootstrap script now installs deterministic tool paths and prepends them to Machine PATH:
+
+```text
+C:\Python312
+C:\Python312\Scripts
+C:\AzureDevCLI
+```
+
+It also downloads the Azure Developer CLI standalone zip and renames `azd-windows-amd64.exe` to:
+
+```text
+C:\AzureDevCLI\azd.exe
+```
+
+### Verify
+
+From VM Run Command:
+
+```powershell
+az vm run-command invoke `
+  -g "<resource-group>" `
+  -n "<jumpbox-vm-name>" `
+  --command-id RunPowerShellScript `
+  --scripts @"
+`$env:Path=[Environment]::GetEnvironmentVariable('Path','Machine')
+Get-Command pwsh,az,azd,git,python
+pwsh.exe -NoLogo -NoProfile -Command '`$PSVersionTable.PSVersion.ToString()'
+az --version | Select-Object -First 1
+azd version
+git --version
+python --version
+"@ `
+  --query "value[].message" `
+  -o tsv
+```
+
 ## How to Add Future Errors
 
 Add each new issue in this format:

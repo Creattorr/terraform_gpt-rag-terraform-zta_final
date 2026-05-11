@@ -11,7 +11,10 @@ New-Item -ItemType Directory -Force -Path $downloadRoot | Out-Null
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 function Add-MachinePath {
-  param([Parameter(Mandatory = $true)][string]$Path)
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [switch]$Prepend
+  )
 
   if (-not (Test-Path $Path)) {
     return
@@ -20,12 +23,22 @@ function Add-MachinePath {
   $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
   $parts = $machinePath -split ";" | Where-Object { $_ }
   if ($parts -notcontains $Path) {
-    [Environment]::SetEnvironmentVariable("Path", "$machinePath;$Path", "Machine")
+    if ($Prepend) {
+      [Environment]::SetEnvironmentVariable("Path", "$Path;$machinePath", "Machine")
+    }
+    else {
+      [Environment]::SetEnvironmentVariable("Path", "$machinePath;$Path", "Machine")
+    }
   }
 
   $sessionParts = $env:Path -split ";" | Where-Object { $_ }
   if ($sessionParts -notcontains $Path) {
-    $env:Path = "$env:Path;$Path"
+    if ($Prepend) {
+      $env:Path = "$Path;$env:Path"
+    }
+    else {
+      $env:Path = "$env:Path;$Path"
+    }
   }
 }
 
@@ -74,11 +87,15 @@ function Install-Msi {
 
 Write-Host "Installing required GPT-RAG jumpbox tools..."
 
-if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {
+$pwshExe = "C:\Program Files\PowerShell\7\pwsh.exe"
+if (-not (Test-Path $pwshExe)) {
   Write-Host "Installing PowerShell 7"
   Invoke-Expression "& { $(Invoke-RestMethod https://aka.ms/install-powershell.ps1) } -UseMSI -Quiet"
 }
 Add-MachinePath "C:\Program Files\PowerShell\7"
+if (-not (Test-Path $pwshExe)) {
+  throw "PowerShell 7 was not found at $pwshExe after install."
+}
 
 if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
   Install-Msi `
@@ -88,6 +105,9 @@ if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
 }
 Add-MachinePath "C:\Program Files (x86)\Microsoft SDKs\Azure\CLI2\wbin"
 Add-MachinePath "C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin"
+if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
+  throw "Azure CLI command 'az' was not found after install."
+}
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
   Install-Executable `
@@ -98,55 +118,52 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
 }
 Add-MachinePath "C:\Program Files\Git\cmd"
 Add-MachinePath "C:\Program Files\Git\bin"
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+  throw "Git command 'git' was not found after install."
+}
 
-$pythonRoot = "C:\Program Files\Python312"
+$pythonRoot = "C:\Python312"
 $pythonExe = Join-Path $pythonRoot "python.exe"
 if (-not (Test-Path $pythonExe)) {
   Install-Executable `
     -Name "Python $PythonVersion" `
     -Uri "https://www.python.org/ftp/python/$PythonVersion/python-$PythonVersion-amd64.exe" `
     -OutFile (Join-Path $downloadRoot "python-$PythonVersion-amd64.exe") `
-    -ArgumentList @("/quiet", "InstallAllUsers=1", "TargetDir=$pythonRoot", "PrependPath=1", "Include_launcher=1", "Include_pip=1", "Include_test=0")
+    -ArgumentList @("/quiet", "InstallAllUsers=1", "TargetDir=$pythonRoot", "PrependPath=0", "Include_launcher=1", "Include_pip=1", "Include_test=0")
 }
-Add-MachinePath $pythonRoot
-Add-MachinePath (Join-Path $pythonRoot "Scripts")
+Add-MachinePath $pythonRoot -Prepend
+Add-MachinePath (Join-Path $pythonRoot "Scripts") -Prepend
+if (-not (Test-Path $pythonExe)) {
+  throw "Python executable was not found at $pythonExe after install."
+}
+$pythonVersionOutput = & $pythonExe --version
+if ($pythonVersionOutput -notmatch "^Python 3\.12\.") {
+  throw "Expected Python 3.12, but $pythonExe returned '$pythonVersionOutput'."
+}
 
-if (-not (Get-Command azd -ErrorAction SilentlyContinue)) {
+$azdRoot = "C:\AzureDevCLI"
+$azdExe = Join-Path $azdRoot "azd.exe"
+if (-not (Test-Path $azdExe)) {
   Write-Host "Installing Azure Developer CLI"
-  Invoke-Expression "& { $(Invoke-RestMethod https://aka.ms/install-azd.ps1) }"
+  New-Item -ItemType Directory -Force -Path $azdRoot | Out-Null
+  $azdZip = Join-Path $downloadRoot "azd-windows-amd64.zip"
+  Invoke-Download -Uri "https://azuresdkartifacts.z5.web.core.windows.net/azd/standalone/release/stable/azd-windows-amd64.zip" -OutFile $azdZip
+  Expand-Archive -Path $azdZip -DestinationPath $azdRoot -Force
+  $azdExtractedExe = Join-Path $azdRoot "azd-windows-amd64.exe"
+  if ((Test-Path $azdExtractedExe) -and -not (Test-Path $azdExe)) {
+    Move-Item -LiteralPath $azdExtractedExe -Destination $azdExe -Force
+  }
 }
-Add-MachinePath "$env:ProgramFiles\Azure Developer CLI"
-Add-MachinePath "$env:LOCALAPPDATA\Programs\Azure Dev CLI"
+Add-MachinePath $azdRoot -Prepend
+if (-not (Test-Path $azdExe)) {
+  throw "Azure Developer CLI executable was not found at $azdExe after install."
+}
 
 Write-Host ""
 Write-Host "Installed tool versions:"
 
-& "C:\Program Files\PowerShell\7\pwsh.exe" -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
-
-if (Get-Command az -ErrorAction SilentlyContinue) {
-  az version --query '"azure-cli"' -o tsv
-}
-else {
-  Write-Warning "Azure CLI command 'az' was not found after install."
-}
-
-if (Get-Command azd -ErrorAction SilentlyContinue) {
-  azd version
-}
-else {
-  Write-Warning "Azure Developer CLI command 'azd' was not found after install."
-}
-
-if (Get-Command git -ErrorAction SilentlyContinue) {
-  git --version
-}
-else {
-  Write-Warning "Git command 'git' was not found after install."
-}
-
-if (Test-Path $pythonExe) {
-  & $pythonExe --version
-}
-else {
-  Write-Warning "Python executable was not found at $pythonExe after install."
-}
+& $pwshExe -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+az version --query '"azure-cli"' -o tsv
+& $azdExe version
+git --version
+& $pythonExe --version
