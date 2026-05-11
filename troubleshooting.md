@@ -615,6 +615,84 @@ If the account capability host already exists under an Azure-generated name, the
 caphostproj Succeeded
 ```
 
+## Workaround: Run Stage 4B Helper From Local PowerShell Through VM Run Command
+
+### When to Use
+
+Use this when local Terraform or local Azure CLI cannot create Foundry capability hosts cleanly, but the private jumpbox can reach the required private endpoints and has the required managed identity permissions.
+
+### Important Distinction
+
+The command is launched from local PowerShell, but the helper script executes inside the jumpbox VM:
+
+```text
+local PowerShell -> Azure VM Run Command -> jumpbox VM -> Foundry ARM API
+```
+
+The script file stays in the local repository:
+
+```text
+terraform/scripts/create-foundry-capability-hosts-vm.ps1
+```
+
+Azure CLI uploads that local file to the VM for execution when this syntax is used:
+
+```powershell
+--scripts "@.\scripts\create-foundry-capability-hosts-vm.ps1"
+```
+
+### Command Shape
+
+Run from the local `terraform` folder:
+
+```powershell
+$subscriptionId = "<subscription-id>"
+az account set --subscription $subscriptionId
+
+$rg = terraform output -raw resource_group_name
+$jumpboxName = terraform output -raw jumpbox_vm_name
+$accountName = terraform output -raw ai_foundry_account_name
+$projectName = terraform output -raw ai_foundry_project_name
+$prefix = terraform output -raw resource_prefix
+$vnetName = terraform output -raw zero_trust_virtual_network_name
+
+$subnetId = az network vnet subnet show `
+  --subscription $subscriptionId `
+  -g $rg `
+  --vnet-name $vnetName `
+  -n "snet-$prefix-ai-agents" `
+  --query id `
+  -o tsv
+
+az vm run-command invoke `
+  --subscription $subscriptionId `
+  -g $rg `
+  -n $jumpboxName `
+  --command-id RunPowerShellScript `
+  --scripts "@.\scripts\create-foundry-capability-hosts-vm.ps1" `
+  --parameters `
+    "SubscriptionId=$subscriptionId" `
+    "ResourceGroupName=$rg" `
+    "AccountName=$accountName" `
+    "ProjectName=$projectName" `
+    "CustomerSubnetId=$subnetId" `
+    "VectorStoreConnectionName=srch-aif-$prefix" `
+    "StorageConnectionName=staif$prefix" `
+    "ThreadStorageConnectionName=cosmos-aif-$prefix" `
+  --query "value[].message" `
+  -o tsv
+```
+
+### Expected Result
+
+The project capability host should eventually report:
+
+```text
+caphostproj Succeeded
+```
+
+If the account host already exists under an Azure-generated name such as `<account-name>@aml_aiagentservice`, a conflict on `caphostacc` can be acceptable as long as both the existing account host and `caphostproj` are `Succeeded`.
+
 ## How to Add Future Errors
 
 Add each new issue in this format:
