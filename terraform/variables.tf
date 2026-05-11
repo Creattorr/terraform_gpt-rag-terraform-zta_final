@@ -266,7 +266,19 @@ variable "deploy_jumpbox_software" {
 variable "install_jumpbox_powershell7" {
   type        = bool
   default     = true
-  description = "Install PowerShell 7 on the Windows jumpbox during VM provisioning. Keep true because Azure VM Run Command starts in Windows PowerShell 5.1 unless pwsh is explicitly called."
+  description = "Install the baseline GPT-RAG jumpbox tools during VM provisioning: PowerShell 7, Azure CLI, Azure Developer CLI, Git, and Python 3.12. Keep true because Azure VM Run Command starts in Windows PowerShell 5.1 unless pwsh is explicitly called."
+}
+
+variable "jumpbox_python312_version" {
+  type        = string
+  default     = "3.12.10"
+  description = "Python 3.12 patch version installed on the Windows jumpbox by the baseline tools bootstrap."
+}
+
+variable "jumpbox_required_tools_script_uri" {
+  type        = string
+  default     = "https://raw.githubusercontent.com/Creattorr/terraform_gpt-rag-terraform-zta_final/main/terraform/scripts/install-jumpbox-required-tools.ps1"
+  description = "HTTPS URI used by the VM Custom Script Extension to download the baseline tools installer. Override this if you fork or host the script elsewhere."
 }
 
 variable "enable_jumpbox_nat_gateway" {

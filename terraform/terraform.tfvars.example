@@ -53,8 +53,9 @@ enable_ai_foundry_capability_hosts        = false
 
 enable_bastion             = true
 enable_jumpbox             = true
-install_jumpbox_powershell7 = true
-deploy_jumpbox_software    = false
+install_jumpbox_powershell7      = true
+jumpbox_python312_version        = "3.12.10"
+deploy_jumpbox_software         = false
 enable_jumpbox_nat_gateway = true
 
 # Optional. Keep the username unless you customize GPT-RAG jumpbox install behavior.

@@ -639,7 +639,7 @@ resource "azurerm_windows_virtual_machine" "jumpbox" {
 
 resource "azurerm_virtual_machine_extension" "jumpbox_powershell7" {
   count                      = var.enable_zero_trust && var.enable_jumpbox && var.install_jumpbox_powershell7 ? 1 : 0
-  name                       = "install-powershell-7"
+  name                       = "install-required-tools"
   virtual_machine_id         = azurerm_windows_virtual_machine.jumpbox[0].id
   publisher                  = "Microsoft.Compute"
   type                       = "CustomScriptExtension"
@@ -648,17 +648,12 @@ resource "azurerm_virtual_machine_extension" "jumpbox_powershell7" {
   tags                       = local.tags
 
   settings = jsonencode({
+    fileUris = [
+      var.jumpbox_required_tools_script_uri
+    ]
     commandToExecute = join(" ", [
-      "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command",
-      "\"$ErrorActionPreference='Stop';",
-      "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;",
-      "if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {",
-      "Write-Host 'Installing PowerShell 7 via Microsoft install script...';",
-      "Invoke-Expression \\\"& { $(Invoke-RestMethod https://aka.ms/install-powershell.ps1) } -UseMSI -Quiet\\\";",
-      "}",
-      "$pwsh='C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe';",
-      "if (-not (Test-Path $pwsh)) { throw 'PowerShell 7 installation did not produce pwsh.exe at expected path.' };",
-      "& $pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'\""
+      "powershell.exe -NoProfile -ExecutionPolicy Bypass -File install-jumpbox-required-tools.ps1",
+      "-PythonVersion ${var.jumpbox_python312_version}"
     ])
   })
 

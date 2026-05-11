@@ -376,7 +376,7 @@ For private DNS/data-plane validation, use:
 
 from the jumpbox or through VM Run Command.
 
-## Error: PowerShell Version on Jumpbox Is 5.1
+## Error: Required Tools Missing on Jumpbox
 
 ### Symptom
 
@@ -384,13 +384,23 @@ Inside the VM or through VM Run Command:
 
 ```powershell
 $PSVersionTable.PSVersion
+az --version
+azd version
+git --version
+python --version
 ```
 
-shows Windows PowerShell 5.1, or scripts fail because they require PowerShell 7.
+shows Windows PowerShell 5.1 only, or one of these commands is not recognized:
+
+- `pwsh.exe`
+- `az`
+- `azd`
+- `git`
+- `python`
 
 ### Likely Cause
 
-Windows Server images include Windows PowerShell 5.1 by default. PowerShell 7 is a side-by-side installation and is launched with:
+Windows Server images include Windows PowerShell 5.1 by default. They do not always include `winget`, Azure Developer CLI, Git, or the exact Python version required for GPT-RAG work. PowerShell 7 is a side-by-side installation and is launched with:
 
 ```powershell
 pwsh.exe
@@ -406,13 +416,28 @@ Terraform now includes a jumpbox VM extension:
 resource "azurerm_virtual_machine_extension" "jumpbox_powershell7"
 ```
 
-It installs PowerShell 7 during jumpbox provisioning when this variable is true:
+It runs the baseline tools installer during jumpbox provisioning when this variable is true:
 
 ```hcl
 install_jumpbox_powershell7 = true
+jumpbox_python312_version   = "3.12.10"
 ```
 
-The GPT-RAG jumpbox software extension also depends on the PowerShell 7 extension and calls:
+The extension downloads and runs:
+
+```text
+terraform/scripts/install-jumpbox-required-tools.ps1
+```
+
+That script installs these tools without using `winget`:
+
+- PowerShell 7
+- Azure CLI
+- Azure Developer CLI
+- Git for Windows
+- Python 3.12
+
+The GPT-RAG jumpbox software extension also depends on the baseline tools extension and calls:
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File install.ps1
@@ -425,7 +450,13 @@ az vm run-command invoke `
   -g "<resource-group>" `
   -n "<jumpbox-vm-name>" `
   --command-id RunPowerShellScript `
-  --scripts "pwsh.exe -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'" `
+  --scripts @"
+pwsh.exe -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+az version --query '\"azure-cli\"' -o tsv
+azd version
+git --version
+python --version
+"@ `
   --query "value[].message" `
   -o tsv
 ```

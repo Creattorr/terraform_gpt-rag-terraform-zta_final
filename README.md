@@ -152,24 +152,34 @@ manage_app_config_keys             = false
 # Start false so the foundation is created first. Turn true in Stage 4 to test Terraform ownership.
 enable_ai_foundry_capability_hosts = false
 
-# Keep false for the replica run; bootstrap can be done separately through VM Run Command if needed.
+# Install baseline jumpbox tools at VM creation without depending on winget:
+# PowerShell 7, Azure CLI, Azure Developer CLI, Git, and Python 3.12.
 install_jumpbox_powershell7       = true
+jumpbox_python312_version         = "3.12.10"
 deploy_jumpbox_software            = false
 
 # Keep public network access open until private endpoints, DNS, and jumpbox validation are working.
 disable_public_network_access      = false
 ```
 
-`install_jumpbox_powershell7 = true` adds a VM extension that installs PowerShell 7 when the Windows jumpbox is created. Azure VM Run Command still starts in Windows PowerShell 5.1 by default, so call `pwsh.exe` explicitly for scripts that require PowerShell 7.
+`install_jumpbox_powershell7 = true` adds a VM extension that installs the required jumpbox tools when the Windows VM is created. The extension downloads `terraform/scripts/install-jumpbox-required-tools.ps1` and installs PowerShell 7, Azure CLI, Azure Developer CLI, Git, and Python 3.12 using official installers/scripts instead of `winget`. This is important because Windows Server images often do not include `winget`.
 
-Verify from VM Run Command:
+Azure VM Run Command still starts in Windows PowerShell 5.1 by default, so call `pwsh.exe` explicitly for scripts that require PowerShell 7.
+
+Verify the toolchain from VM Run Command:
 
 ```powershell
 az vm run-command invoke `
   -g "<resource-group>" `
   -n "<jumpbox-vm-name>" `
   --command-id RunPowerShellScript `
-  --scripts "pwsh.exe -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'" `
+  --scripts @"
+pwsh.exe -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+az version --query '\"azure-cli\"' -o tsv
+azd version
+git --version
+python --version
+"@ `
   --query "value[].message" `
   -o tsv
 ```
