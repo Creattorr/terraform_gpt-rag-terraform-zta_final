@@ -429,6 +429,8 @@ The extension downloads and runs:
 terraform/scripts/install-jumpbox-required-tools.ps1
 ```
 
+Terraform uploads that script to the private `jumpbox_workspace` container in the deployment storage account. The VM Custom Script Extension downloads it by using the jumpbox VM system-assigned managed identity, so the deployment does not depend on public GitHub raw URLs or `winget`.
+
 That script installs these tools without using `winget`:
 
 - PowerShell 7
@@ -474,6 +476,49 @@ az vm run-command invoke `
   --query "value[].message" `
   -o tsv
 ```
+
+## Error: CustomScript Failed to Download GitHub Raw Script with 404
+
+### Symptom
+
+Terraform fails on:
+
+```hcl
+azurerm_virtual_machine_extension.jumpbox_powershell7
+```
+
+with an error similar to:
+
+```text
+CustomScript failed to download the blob https://raw.githubusercontent.com/.../install-jumpbox-required-tools.ps1 because it does not exist.
+Response code: "(404) Not Found."
+```
+
+### Likely Cause
+
+The VM extension was pointing at a GitHub raw URL. That is fragile because the repository can be private, the branch/path can differ, or the file might not yet be pushed when the VM extension runs.
+
+### Fix Applied
+
+Terraform now creates this blob from the local repository file:
+
+```hcl
+resource "azurerm_storage_blob" "jumpbox_required_tools_script"
+```
+
+The VM extension now uses protected settings with managed identity:
+
+```hcl
+protected_settings = jsonencode({
+  fileUris = [
+    azurerm_storage_blob.jumpbox_required_tools_script.url
+  ]
+  commandToExecute = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File install-jumpbox-required-tools.ps1 -PythonVersion ${var.jumpbox_python312_version}"
+  managedIdentity  = {}
+})
+```
+
+The extension depends on the storage blob and the jumpbox storage role assignment, so the script is available before the extension tries to run.
 
 ## How to Add Future Errors
 

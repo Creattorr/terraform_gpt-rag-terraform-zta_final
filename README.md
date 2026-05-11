@@ -162,7 +162,7 @@ deploy_jumpbox_software            = false
 disable_public_network_access      = false
 ```
 
-`install_jumpbox_powershell7 = true` adds a VM extension that installs the required jumpbox tools when the Windows VM is created. The extension downloads `terraform/scripts/install-jumpbox-required-tools.ps1` and installs PowerShell 7, Azure CLI, Azure Developer CLI, Git, and Python 3.12 using official installers/scripts instead of `winget`. This is important because Windows Server images often do not include `winget`.
+`install_jumpbox_powershell7 = true` adds a VM extension that installs the required jumpbox tools when the Windows VM is created. Terraform uploads `terraform/scripts/install-jumpbox-required-tools.ps1` to the deployment storage account, and the VM extension downloads it from the private `jumpbox_workspace` container using the VM managed identity. The script installs PowerShell 7, Azure CLI, Azure Developer CLI, Git, and Python 3.12 using official installers/scripts instead of `winget`. This is important because Windows Server images often do not include `winget`.
 
 Azure VM Run Command still starts in Windows PowerShell 5.1 by default, so call `pwsh.exe` explicitly for scripts that require PowerShell 7.
 

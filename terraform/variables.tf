@@ -275,12 +275,6 @@ variable "jumpbox_python312_version" {
   description = "Python 3.12 patch version installed on the Windows jumpbox by the baseline tools bootstrap."
 }
 
-variable "jumpbox_required_tools_script_uri" {
-  type        = string
-  default     = "https://raw.githubusercontent.com/Creattorr/terraform_gpt-rag-terraform-zta_final/main/terraform/scripts/install-jumpbox-required-tools.ps1"
-  description = "HTTPS URI used by the VM Custom Script Extension to download the baseline tools installer. Override this if you fork or host the script elsewhere."
-}
-
 variable "enable_jumpbox_nat_gateway" {
   type        = bool
   default     = true
