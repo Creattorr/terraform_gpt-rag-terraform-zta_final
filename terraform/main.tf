@@ -637,34 +637,23 @@ resource "azurerm_windows_virtual_machine" "jumpbox" {
   }
 }
 
-resource "azurerm_virtual_machine_extension" "jumpbox_powershell7" {
-  count                      = var.enable_zero_trust && var.enable_jumpbox && var.install_jumpbox_powershell7 ? 1 : 0
-  name                       = "install-required-tools"
-  virtual_machine_id         = azurerm_windows_virtual_machine.jumpbox[0].id
-  publisher                  = "Microsoft.Compute"
-  type                       = "CustomScriptExtension"
-  type_handler_version       = "1.10"
-  auto_upgrade_minor_version = true
-  tags                       = local.tags
+resource "azurerm_virtual_machine_run_command" "jumpbox_required_tools" {
+  count              = var.enable_zero_trust && var.enable_jumpbox && var.install_jumpbox_powershell7 ? 1 : 0
+  name               = "install-required-tools"
+  location           = azurerm_resource_group.this.location
+  virtual_machine_id = azurerm_windows_virtual_machine.jumpbox[0].id
+  tags               = local.tags
 
-  settings = jsonencode({
-    timestamp = parseint(substr(filemd5("${path.module}/scripts/install-jumpbox-required-tools.ps1"), 0, 8), 16)
-  })
+  source {
+    script = file("${path.module}/scripts/install-jumpbox-required-tools.ps1")
+  }
 
-  protected_settings = jsonencode({
-    fileUris = [
-      azurerm_storage_blob.jumpbox_required_tools_script.url
-    ]
-    commandToExecute = join(" ", [
-      "powershell.exe -NoProfile -ExecutionPolicy Bypass -File install-jumpbox-required-tools.ps1",
-      "-PythonVersion ${var.jumpbox_python312_version}"
-    ])
-    managedIdentity = {}
-  })
+  parameter {
+    name  = "PythonVersion"
+    value = var.jumpbox_python312_version
+  }
 
   depends_on = [
-    azurerm_private_endpoint.this,
-    azurerm_role_assignment.jumpbox_storage_blob_data_contributor,
     azurerm_subnet_nat_gateway_association.management
   ]
 }
@@ -714,7 +703,7 @@ resource "azurerm_virtual_machine_extension" "jumpbox_software" {
   })
 
   depends_on = [
-    azurerm_virtual_machine_extension.jumpbox_powershell7
+    azurerm_virtual_machine_run_command.jumpbox_required_tools
   ]
 }
 
@@ -802,15 +791,6 @@ resource "azurerm_storage_container" "jumpbox_workspace" {
   name                  = var.jumpbox_workspace_container_name
   storage_account_id    = azurerm_storage_account.solution.id
   container_access_type = "private"
-}
-
-resource "azurerm_storage_blob" "jumpbox_required_tools_script" {
-  name                   = "scripts/install-jumpbox-required-tools.ps1"
-  storage_account_name   = azurerm_storage_account.solution.name
-  storage_container_name = azurerm_storage_container.jumpbox_workspace.name
-  type                   = "Block"
-  source                 = "${path.module}/scripts/install-jumpbox-required-tools.ps1"
-  content_type           = "text/plain"
 }
 
 resource "azurerm_search_service" "solution" {

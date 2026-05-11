@@ -410,10 +410,10 @@ Azure VM Run Command also starts in Windows PowerShell 5.1 unless the command ex
 
 ### Fix Applied
 
-Terraform now includes a jumpbox VM extension:
+Terraform now includes an Azure VM Run Command resource:
 
 ```hcl
-resource "azurerm_virtual_machine_extension" "jumpbox_powershell7"
+resource "azurerm_virtual_machine_run_command" "jumpbox_required_tools"
 ```
 
 It runs the baseline tools installer during jumpbox provisioning when this variable is true:
@@ -423,13 +423,13 @@ install_jumpbox_powershell7 = true
 jumpbox_python312_version   = "3.12.10"
 ```
 
-The extension downloads and runs:
+Terraform sends this local script through the Azure control plane:
 
 ```text
 terraform/scripts/install-jumpbox-required-tools.ps1
 ```
 
-Terraform uploads that script to the private `jumpbox_workspace` container in the deployment storage account. The VM Custom Script Extension downloads it by using the jumpbox VM system-assigned managed identity, so the deployment does not depend on public GitHub raw URLs or `winget`.
+It does not depend on public GitHub raw URLs, private storage blob downloads, or `winget`.
 
 That script installs these tools without using `winget`:
 
@@ -439,7 +439,7 @@ That script installs these tools without using `winget`:
 - Git for Windows
 - Python 3.12
 
-The GPT-RAG jumpbox software extension also depends on the baseline tools extension and calls:
+The GPT-RAG jumpbox software extension also depends on the baseline tools run command and calls:
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File install.ps1
@@ -477,7 +477,7 @@ az vm run-command invoke `
   -o tsv
 ```
 
-## Error: CustomScript Failed to Download GitHub Raw Script with 404
+## Error: CustomScript Failed to Download GitHub Raw or Private Storage Script
 
 ### Symptom
 
@@ -487,38 +487,34 @@ Terraform fails on:
 azurerm_virtual_machine_extension.jumpbox_powershell7
 ```
 
-with an error similar to:
+with an error similar to one of these:
 
 ```text
 CustomScript failed to download the blob https://raw.githubusercontent.com/.../install-jumpbox-required-tools.ps1 because it does not exist.
 Response code: "(404) Not Found."
 ```
 
+```text
+CustomScript failed to download the blob https://<storage-account>.blob.core.windows.net/.../install-jumpbox-required-tools.ps1.
+```
+
 ### Likely Cause
 
-The VM extension was pointing at a GitHub raw URL. That is fragile because the repository can be private, the branch/path can differ, or the file might not yet be pushed when the VM extension runs.
+The VM extension was pointing at an external file location. GitHub raw URLs are fragile because the repository can be private, the branch/path can differ, or the file might not yet be pushed when the VM extension runs. Storage blob URLs can also fail in ZTA environments when public network access is disabled or private DNS/private endpoint readiness is not complete.
 
 ### Fix Applied
 
-Terraform now creates this blob from the local repository file:
+Terraform no longer downloads this installer through GitHub or Storage. It now uses Azure VM Run Command with inline script content:
 
 ```hcl
-resource "azurerm_storage_blob" "jumpbox_required_tools_script"
+resource "azurerm_virtual_machine_run_command" "jumpbox_required_tools" {
+  source {
+    script = file("${path.module}/scripts/install-jumpbox-required-tools.ps1")
+  }
+}
 ```
 
-The VM extension now uses protected settings with managed identity:
-
-```hcl
-protected_settings = jsonencode({
-  fileUris = [
-    azurerm_storage_blob.jumpbox_required_tools_script.url
-  ]
-  commandToExecute = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File install-jumpbox-required-tools.ps1 -PythonVersion ${var.jumpbox_python312_version}"
-  managedIdentity  = {}
-})
-```
-
-The extension depends on the storage blob and the jumpbox storage role assignment, so the script is available before the extension tries to run.
+This makes a fresh environment independent of existing GitHub links and independent of storage data-plane access during tool bootstrap.
 
 ## How to Add Future Errors
 
