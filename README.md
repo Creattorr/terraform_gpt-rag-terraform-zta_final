@@ -334,6 +334,8 @@ If it fails because of preview API timeout, local identity permissions, or a pro
 
 Use this only if Stage 4 fails.
 
+The fallback runs through the jumpbox managed identity. Terraform grants that identity `Cognitive Services Contributor` on the AI Foundry account so the VM-side helper can call the preview capability host ARM APIs.
+
 Set the flag back to false so future local plans do not repeatedly try the failed create:
 
 ```hcl

@@ -756,6 +756,13 @@ resource "azurerm_role_assignment" "jumpbox_key_vault_secrets_user" {
   principal_id         = azurerm_windows_virtual_machine.jumpbox[0].identity[0].principal_id
 }
 
+resource "azurerm_role_assignment" "jumpbox_foundry_contributor" {
+  count                = var.enable_zero_trust && var.enable_jumpbox ? 1 : 0
+  scope                = azapi_resource.ai_foundry_account.id
+  role_definition_name = "Cognitive Services Contributor"
+  principal_id         = azurerm_windows_virtual_machine.jumpbox[0].identity[0].principal_id
+}
+
 resource "azurerm_storage_account" "solution" {
   name                            = local.solution_storage_account_name
   resource_group_name             = azurerm_resource_group.this.name

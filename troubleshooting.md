@@ -572,6 +572,49 @@ python --version
   -o tsv
 ```
 
+## Error: Stage 4B Capability Host Fallback Returns AuthorizationFailed
+
+### Symptom
+
+The VM Run Command helper prints:
+
+```text
+AuthorizationFailed
+does not have authorization to perform action 'Microsoft.CognitiveServices/accounts/capabilityHosts/write'
+```
+
+or:
+
+```text
+does not have authorization to perform action 'Microsoft.CognitiveServices/accounts/projects/capabilityHosts/write'
+```
+
+### Likely Cause
+
+The helper runs under the jumpbox VM system-assigned managed identity. That identity needs Azure control-plane permission on the AI Foundry account to create or repair capability hosts.
+
+### Fix Applied
+
+Terraform grants the jumpbox identity this role on the AI Foundry account:
+
+```hcl
+resource "azurerm_role_assignment" "jumpbox_foundry_contributor" {
+  scope                = azapi_resource.ai_foundry_account.id
+  role_definition_name = "Cognitive Services Contributor"
+  principal_id         = azurerm_windows_virtual_machine.jumpbox[0].identity[0].principal_id
+}
+```
+
+After applying the role, wait briefly for RBAC propagation and rerun Stage 4B.
+
+### Note
+
+If the account capability host already exists under an Azure-generated name, the helper may print a conflict for `caphostacc`. Continue by checking the project capability host. Stage 4B is usable when the project host reports:
+
+```text
+caphostproj Succeeded
+```
+
 ## How to Add Future Errors
 
 Add each new issue in this format:
