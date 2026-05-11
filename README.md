@@ -153,10 +153,25 @@ manage_app_config_keys             = false
 enable_ai_foundry_capability_hosts = false
 
 # Keep false for the replica run; bootstrap can be done separately through VM Run Command if needed.
+install_jumpbox_powershell7       = true
 deploy_jumpbox_software            = false
 
 # Keep public network access open until private endpoints, DNS, and jumpbox validation are working.
 disable_public_network_access      = false
+```
+
+`install_jumpbox_powershell7 = true` adds a VM extension that installs PowerShell 7 when the Windows jumpbox is created. Azure VM Run Command still starts in Windows PowerShell 5.1 by default, so call `pwsh.exe` explicitly for scripts that require PowerShell 7.
+
+Verify from VM Run Command:
+
+```powershell
+az vm run-command invoke `
+  -g "<resource-group>" `
+  -n "<jumpbox-vm-name>" `
+  --command-id RunPowerShellScript `
+  --scripts "pwsh.exe -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'" `
+  --query "value[].message" `
+  -o tsv
 ```
 
 ## Stage 1: Terraform Foundation Apply

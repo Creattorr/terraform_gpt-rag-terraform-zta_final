@@ -376,6 +376,74 @@ For private DNS/data-plane validation, use:
 
 from the jumpbox or through VM Run Command.
 
+## Error: PowerShell Version on Jumpbox Is 5.1
+
+### Symptom
+
+Inside the VM or through VM Run Command:
+
+```powershell
+$PSVersionTable.PSVersion
+```
+
+shows Windows PowerShell 5.1, or scripts fail because they require PowerShell 7.
+
+### Likely Cause
+
+Windows Server images include Windows PowerShell 5.1 by default. PowerShell 7 is a side-by-side installation and is launched with:
+
+```powershell
+pwsh.exe
+```
+
+Azure VM Run Command also starts in Windows PowerShell 5.1 unless the command explicitly calls `pwsh.exe`.
+
+### Fix Applied
+
+Terraform now includes a jumpbox VM extension:
+
+```hcl
+resource "azurerm_virtual_machine_extension" "jumpbox_powershell7"
+```
+
+It installs PowerShell 7 during jumpbox provisioning when this variable is true:
+
+```hcl
+install_jumpbox_powershell7 = true
+```
+
+The GPT-RAG jumpbox software extension also depends on the PowerShell 7 extension and calls:
+
+```powershell
+pwsh.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File install.ps1
+```
+
+### Verify
+
+```powershell
+az vm run-command invoke `
+  -g "<resource-group>" `
+  -n "<jumpbox-vm-name>" `
+  --command-id RunPowerShellScript `
+  --scripts "pwsh.exe -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'" `
+  --query "value[].message" `
+  -o tsv
+```
+
+### Running Future VM Commands
+
+When a helper script needs PowerShell 7, wrap it like this:
+
+```powershell
+az vm run-command invoke `
+  -g "<resource-group>" `
+  -n "<jumpbox-vm-name>" `
+  --command-id RunPowerShellScript `
+  --scripts "pwsh.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File C:\github\gpt-rag-terraform\terraform\scripts\<script-name>.ps1" `
+  --query "value[].message" `
+  -o tsv
+```
+
 ## How to Add Future Errors
 
 Add each new issue in this format:

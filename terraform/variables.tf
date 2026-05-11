@@ -263,6 +263,12 @@ variable "deploy_jumpbox_software" {
   description = "Run the GPT-RAG Windows VM Custom Script Extension to install VS Code, Azure CLI, Git, Node.js, Python 3.11, azd, PowerShell Core, Notepad++, WSL, Docker Desktop login task, GitHub Desktop login task, VS Code extensions, and GPT-RAG repositories."
 }
 
+variable "install_jumpbox_powershell7" {
+  type        = bool
+  default     = true
+  description = "Install PowerShell 7 on the Windows jumpbox during VM provisioning. Keep true because Azure VM Run Command starts in Windows PowerShell 5.1 unless pwsh is explicitly called."
+}
+
 variable "enable_jumpbox_nat_gateway" {
   type        = bool
   default     = true

@@ -53,6 +53,7 @@ enable_ai_foundry_capability_hosts        = false
 
 enable_bastion             = true
 enable_jumpbox             = true
+install_jumpbox_powershell7 = true
 deploy_jumpbox_software    = false
 enable_jumpbox_nat_gateway = true
 

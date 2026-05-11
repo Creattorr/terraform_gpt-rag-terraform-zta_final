@@ -637,6 +637,36 @@ resource "azurerm_windows_virtual_machine" "jumpbox" {
   }
 }
 
+resource "azurerm_virtual_machine_extension" "jumpbox_powershell7" {
+  count                      = var.enable_zero_trust && var.enable_jumpbox && var.install_jumpbox_powershell7 ? 1 : 0
+  name                       = "install-powershell-7"
+  virtual_machine_id         = azurerm_windows_virtual_machine.jumpbox[0].id
+  publisher                  = "Microsoft.Compute"
+  type                       = "CustomScriptExtension"
+  type_handler_version       = "1.10"
+  auto_upgrade_minor_version = true
+  tags                       = local.tags
+
+  settings = jsonencode({
+    commandToExecute = join(" ", [
+      "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command",
+      "\"$ErrorActionPreference='Stop';",
+      "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;",
+      "if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {",
+      "Write-Host 'Installing PowerShell 7 via Microsoft install script...';",
+      "Invoke-Expression \\\"& { $(Invoke-RestMethod https://aka.ms/install-powershell.ps1) } -UseMSI -Quiet\\\";",
+      "}",
+      "$pwsh='C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe';",
+      "if (-not (Test-Path $pwsh)) { throw 'PowerShell 7 installation did not produce pwsh.exe at expected path.' };",
+      "& $pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'\""
+    ])
+  })
+
+  depends_on = [
+    azurerm_subnet_nat_gateway_association.management
+  ]
+}
+
 resource "azurerm_virtual_machine_extension" "jumpbox_software" {
   count                      = var.enable_zero_trust && var.enable_jumpbox && var.deploy_jumpbox_software ? 1 : 0
   name                       = "cse"
@@ -652,7 +682,7 @@ resource "azurerm_virtual_machine_extension" "jumpbox_software" {
       "https://raw.githubusercontent.com/Azure/GPT-RAG/refs/tags/v${local.gpt_rag_release}/infra/install.ps1"
     ]
     commandToExecute = join(" ", [
-      "powershell.exe -ExecutionPolicy Unrestricted -File install.ps1",
+      "pwsh.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File install.ps1",
       "-release release/${local.gpt_rag_release}",
       "-UseUAI false",
       "-ResourceToken ${local.prefix}",
@@ -680,6 +710,10 @@ resource "azurerm_virtual_machine_extension" "jumpbox_software" {
       "} else { Write-Host 'Workspace package not found; skipping sync.' }\""
     ])
   })
+
+  depends_on = [
+    azurerm_virtual_machine_extension.jumpbox_powershell7
+  ]
 }
 
 resource "azurerm_role_assignment" "jumpbox_resource_group_reader" {
