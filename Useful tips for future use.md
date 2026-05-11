@@ -124,20 +124,41 @@ The Data Ingestion identity is created as:
 
 ```hcl
 resource "azurerm_user_assigned_identity" "dataingest" {
-  name = "id-${local.prefix}-dataingest"
+  name                = "id-${local.prefix}-dataingest"
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+  tags                = local.tags
 }
 ```
 
 That identity is attached to the Data Ingestion Container App:
 
 ```hcl
-identity_ids = [azurerm_user_assigned_identity.dataingest.id]
+resource "azurerm_container_app" "dataingest" {
+  name                         = local.container_app_specs[2].name
+  container_app_environment_id = azurerm_container_app_environment.this.id
+  resource_group_name          = azurerm_resource_group.this.name
+  revision_mode                = "Single"
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.dataingest.id]
+  }
+
+  registry {
+    server   = azurerm_container_registry.this.login_server
+    identity = azurerm_user_assigned_identity.dataingest.id
+  }
+}
 ```
 
 The app also receives the identity client ID:
 
 ```hcl
-AZURE_CLIENT_ID = azurerm_user_assigned_identity.dataingest.client_id
+env {
+  name  = "AZURE_CLIENT_ID"
+  value = azurerm_user_assigned_identity.dataingest.client_id
+}
 ```
 
 ### Data Ingestion Role Examples
@@ -249,7 +270,24 @@ Look for:
 When Terraform manages the keys directly, they are created by:
 
 ```hcl
-resource "azapi_resource" "app_config_keys"
+resource "azapi_resource" "app_config_keys" {
+  for_each = var.manage_app_config_keys ? {
+    for item in local.app_config_items :
+    "${item.label}:${item.name}" => item
+  } : {}
+
+  type                      = "Microsoft.AppConfiguration/configurationStores/keyValues@2024-05-01"
+  name                      = format("%s$%s", each.value.name, each.value.label)
+  parent_id                 = azurerm_app_configuration.this.id
+  schema_validation_enabled = false
+
+  body = {
+    properties = {
+      value       = each.value.value
+      contentType = each.value.content_type
+    }
+  }
+}
 ```
 
 In the ZTA flow, the safer default is usually:
@@ -280,6 +318,52 @@ CRON_RUN_BLOB_INDEX
 CRON_RUN_BLOB_PURGE
 ```
 
+Example App Configuration item definitions from Terraform:
+
+```hcl
+{
+  name         = "CHAT_DEPLOYMENT_NAME"
+  value        = "chat"
+  label        = "gpt-rag"
+  content_type = "text/plain"
+}
+
+{
+  name         = "PROMPTS_CONTAINER"
+  value        = azurerm_cosmosdb_sql_container.prompts.name
+  label        = "gpt-rag"
+  content_type = "text/plain"
+}
+
+{
+  name         = "PROMPT_SOURCE"
+  value        = "file"
+  label        = "gpt-rag"
+  content_type = "text/plain"
+}
+
+{
+  name         = "AGENT_STRATEGY"
+  value        = "single_agent_rag"
+  label        = "gpt-rag"
+  content_type = "text/plain"
+}
+
+{
+  name         = "SEARCH_RAG_INDEX_NAME"
+  value        = "ragindex-${local.prefix}"
+  label        = "gpt-rag"
+  content_type = "text/plain"
+}
+
+{
+  name         = "CRON_RUN_BLOB_INDEX"
+  value        = "10 * * * *"
+  label        = "gpt-rag-ingestion"
+  content_type = "text/plain"
+}
+```
+
 ### How Each Service Reads Settings
 
 Orchestrator reads App Configuration labels in this order:
@@ -296,6 +380,21 @@ In the source code, this is handled by:
 components/gpt-rag-orchestrator/src/connectors/appconfig.py
 ```
 
+Relevant code:
+
+```python
+orchestrator_label_selector = SettingSelector(label_filter='gpt-rag-orchestrator', key_filter='*')
+base_label_selector = SettingSelector(label_filter='gpt-rag', key_filter='*')
+no_label_selector = SettingSelector(label_filter=None, key_filter='*')
+
+self.client = load(
+    selects=[orchestrator_label_selector, base_label_selector, no_label_selector],
+    endpoint=endpoint,
+    credential=self.credential,
+    key_vault_options=AzureAppConfigurationKeyVaultOptions(credential=self.credential)
+)
+```
+
 Ingestion reads:
 
 ```text
@@ -308,6 +407,21 @@ In the source code, this is handled by:
 
 ```text
 components/gpt-rag-ingestion/tools/appconfig.py
+```
+
+Relevant code:
+
+```python
+app_label_selector = SettingSelector(label_filter='gpt-rag-ingestion', key_filter='*')
+base_label_selector = SettingSelector(label_filter='gpt-rag', key_filter='*')
+no_label_selector = SettingSelector(label_filter=None, key_filter='*')
+
+self.client = load(
+    selects=[app_label_selector, base_label_selector, no_label_selector],
+    endpoint=endpoint,
+    credential=self.credential,
+    key_vault_options=AzureAppConfigurationKeyVaultOptions(credential=self.credential),
+)
 ```
 
 MCP also reads from App Configuration, mainly the `gpt-rag` label.
@@ -323,12 +437,41 @@ APP_API_TOKEN
 
 from Terraform.
 
+Terraform sets those bootstrap values in each Container App. Example:
+
+```hcl
+env {
+  name  = "APP_CONFIG_ENDPOINT"
+  value = azurerm_app_configuration.this.endpoint
+}
+
+env {
+  name  = "AZURE_TENANT_ID"
+  value = var.tenant_id
+}
+
+env {
+  name  = "AZURE_CLIENT_ID"
+  value = azurerm_user_assigned_identity.orchestrator.client_id
+}
+```
+
 ## 3. Where LLM Prompts Are
 
 For orchestrator, prompt selection is controlled by:
 
 ```python
 self.prompt_source = self.cfg.get("PROMPT_SOURCE", "file")
+```
+
+Full surrounding code:
+
+```python
+self.project_endpoint = self.cfg.get("AI_FOUNDRY_PROJECT_ENDPOINT")
+self.account_endpoint = self.cfg.get("AI_FOUNDRY_ACCOUNT_ENDPOINT")
+self.model_name = self.cfg.get("CHAT_DEPLOYMENT_NAME")
+self.prompt_source = self.cfg.get("PROMPT_SOURCE", "file")
+self.openai_api_version = self.cfg.get("OPENAI_API_VERSION", "2025-04-01-preview")
 ```
 
 If:
@@ -355,6 +498,18 @@ That prompt is used when the orchestrator creates the Foundry agent:
 instructions=await self._read_prompt("main")
 ```
 
+Full agent creation snippet:
+
+```python
+agent = await project_client.agents.create_agent(
+    model=self.model_name,
+    name="gpt-rag-agent",
+    instructions=await self._read_prompt("main"),
+    tools=self.tools_list,
+    tool_resources=self.tool_resources
+)
+```
+
 If:
 
 ```text
@@ -362,6 +517,69 @@ PROMPT_SOURCE = cosmos
 ```
 
 then prompts are read from the Cosmos DB `prompts` container.
+
+Cosmos prompt loading code:
+
+```python
+async def _read_prompt_cosmos(self, prompt_name, placeholders=None):
+    prompt_json = await self.cosmos.get_document(
+        "prompts",
+        f"{self.strategy_type.value}_{prompt_name}"
+    )
+    prompt = prompt_json.get("content", "")
+    return prompt
+```
+
+File prompt loading code:
+
+```python
+async def _read_prompt_file(self, prompt_name, placeholders=None):
+    prompt_file_path = os.path.join(self._prompt_dir(), f"{prompt_name}.txt")
+
+    with open(prompt_file_path, "r") as f:
+        prompt = f.read().strip()
+        return prompt
+```
+
+Search tool settings are also read from App Configuration:
+
+```python
+azure_ai_conn_id = cfg.get("SEARCH_CONNECTION_ID", "")
+index_name = cfg.get("SEARCH_RAG_INDEX_NAME", "ragindex")
+
+self.ai_search = AzureAISearchTool(
+    index_connection_id=azure_ai_conn_id,
+    index_name=index_name,
+    query_type=AzureAISearchQueryType.SIMPLE,
+    top_k=cfg.get("SEARCH_TOP_K", 5, int),
+    filter="",
+)
+```
+
+Ingestion schedule settings are read from App Configuration/environment:
+
+```python
+s_blob_index = _schedule(
+    "CRON_RUN_BLOB_INDEX",
+    run_blob_index,
+    "blob_index_files",
+    "blob_index_files"
+)
+
+s_blob_purge = _schedule(
+    "CRON_RUN_BLOB_PURGE",
+    run_blob_purge,
+    "blob_purge_deleted_files",
+    "blob_purge_deleted_files"
+)
+```
+
+Ingestion chunking settings are read in chunkers, for example:
+
+```python
+self.max_chunk_size = int(app_config_client.get("CHUNKING_NUM_TOKENS", "2048"))
+self.minimum_chunk_size = int(app_config_client.get("CHUNKING_MIN_CHUNK_SIZE", "100"))
+```
 
 ## 4. How to Apply Changes
 
